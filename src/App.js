@@ -53,6 +53,23 @@ class App {
       promotionMap.set(END_DATE, promotionInfo[4]);
       promotionsList.push(promotionMap);
     });
+
+    // 환영 인사 및 제품 목록, 안내 출력
+    Console.print('안녕하세요. W편의점입니다.');
+    Console.print('현재 보유하고 있는 상품입니다.\n');
+    productsList.forEach((product) => {
+      let nowQuantity = '';
+      if (product.get(QUANTITY) !== 0)
+        nowQuantity = `${product.get(QUANTITY)}개`;
+      else nowQuantity = '재고 없음';
+
+      Console.print(
+        `- ${product.get(PRODUCT_NAME)} ${product.get(PRICE).toLocaleString('ko-KR')} ${nowQuantity} ${product.get(PROMOTION)}`,
+      );
+    });
+    const buyInput = await Console.readLineAsync(
+      '\n구매하실 상품명과 수량을 입력해 주세요. (예: [사이다-2],[감자칩-1]\n',
+    );
   }
 }
 
