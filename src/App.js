@@ -3,8 +3,8 @@ import Promotions from './setting/Promotions.js';
 import ProductService from './services/ProductService.js';
 import PromotionService from './services/PromotionService.js';
 import MembershipService from './services/MembershipService.js';
-import InputHandler from './handlers/InputHandler.js';
-import OutputHandler from './handlers/OutputHandler.js';
+import InputHandler from './io/InputHandler.js';
+import OutputHandler from './io/OutputHandler.js';
 
 class App {
   constructor() {
@@ -19,28 +19,40 @@ class App {
   }
 
   async run() {
-    while (true) {
-      this.outputHandler.printWelcomeMessage(this.productService.productsMap);
-
-      const buyList = await this.inputHandler.getBuyListWithPromotions(this.productService, this.promotionService);
-
-      const applyMembershipDiscount = await this.inputHandler.askMembershipDiscount();
-
-      const { totalAmount, promotionDiscount } = this.calculateTotals(buyList);
-
-      let membershipDiscount = 0;
-      if (applyMembershipDiscount) {
-        membershipDiscount = this.membershipService.calculateMembershipDiscount(totalAmount, promotionDiscount);
-      }
-
-      const finalAmount = totalAmount - promotionDiscount - membershipDiscount;
-
-      this.outputHandler.printReceipt(buyList, totalAmount, promotionDiscount, membershipDiscount, finalAmount);
-
-      const continueShopping = await this.inputHandler.askContinueShopping();
-      if (!continueShopping) break;
+    while (await this.processPurchase()) {
+      // 계속 구매를 진행
     }
     this.outputHandler.printThankYouMessage();
+  }
+
+  async processPurchase() {
+    this.outputHandler.printWelcomeMessage(this.productService.productsMap);
+
+    const buyList = await this.inputHandler.getBuyListWithPromotions(this.productService, this.promotionService);
+
+    const applyMembershipDiscount = await this.inputHandler.askMembershipDiscount();
+
+    const { totalAmount, promotionDiscount } = this.calculateTotals(buyList);
+
+    const { membershipDiscount, finalAmount } = this.calculateFinalAmount(
+      applyMembershipDiscount,
+      totalAmount,
+      promotionDiscount,
+    );
+
+    this.outputHandler.printReceipt(buyList, totalAmount, promotionDiscount, membershipDiscount, finalAmount);
+
+    const continueShopping = await this.inputHandler.askContinueShopping();
+    return continueShopping;
+  }
+
+  calculateFinalAmount(applyMembershipDiscount, totalAmount, promotionDiscount) {
+    let membershipDiscount = 0;
+    if (applyMembershipDiscount) {
+      membershipDiscount = this.membershipService.calculateMembershipDiscount(totalAmount, promotionDiscount);
+    }
+    const finalAmount = totalAmount - promotionDiscount - membershipDiscount;
+    return { membershipDiscount, finalAmount };
   }
 
   calculateTotals(buyList) {
@@ -50,8 +62,10 @@ class App {
     buyList.forEach((buyItem) => {
       const amount = buyItem.productEntries[0].price * buyItem.quantity;
       totalAmount += amount;
+      let freeQuantity = 0;
       if (buyItem.freeQuantity) {
-        promotionDiscount += buyItem.productEntries[0].price * buyItem.freeQuantity;
+        freeQuantity = buyItem.freeQuantity;
+        promotionDiscount += buyItem.productEntries[0].price * freeQuantity;
       }
     });
 

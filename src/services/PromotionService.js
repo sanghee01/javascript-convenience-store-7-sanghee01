@@ -18,15 +18,18 @@ class PromotionService {
     this.checkStockAvailability(quantity, productEntries);
 
     const promotableProducts = this.findPromotableProducts(productEntries, currentDate);
-    let promotion = promotableProducts.length > 0 ? this.promotionsMap.get(promotableProducts[0].promotion) : null;
+    let promotion = null;
+    if (promotableProducts.length > 0) {
+      promotion = this.promotionsMap.get(promotableProducts[0].promotion);
+    }
     buyItem.promotion = promotion;
     buyItem.freeQuantity = 0;
 
     if (promotion) {
       await this.applyPromotion(buyItem, promotableProducts, promotion);
-    } else {
-      await this.deductQuantityFromProducts(quantity, productEntries);
+      return;
     }
+    await this.deductQuantityFromProducts(quantity, productEntries);
   }
 
   checkStockAvailability(quantity, productEntries) {

@@ -5,8 +5,11 @@ class OutputHandler {
     Console.print('\n안녕하세요. W편의점입니다.');
     Console.print('현재 보유하고 있는 상품입니다.\n');
     for (const product of productsMap.values()) {
-      const promotionInfo = product.promotion ? ` ${product.promotion}` : '';
-      const quantityInfo = product.quantity > 0 ? `${product.quantity}개` : '재고 없음';
+      let promotionInfo = '';
+      if (product.promotion) promotionInfo = ` ${product.promotion}`;
+      let quantityInfo = '재고 없음';
+      if (product.quantity > 0) quantityInfo = `${product.quantity}개`;
+
       Console.print(`- ${product.name} ${product.price.toLocaleString('ko-KR')}원 ${quantityInfo}${promotionInfo}`);
     }
   }
@@ -15,7 +18,9 @@ class OutputHandler {
     Console.print('\n==============W 편의점================');
     Console.print('상품명 수량 금액');
     this.printPurchaseItems(buyList);
-    if (promotionDiscount > 0) this.printFreeItems(buyList);
+    if (promotionDiscount > 0) {
+      this.printFreeItems(buyList);
+    }
     this.printTotals(buyList, totalAmount, promotionDiscount, membershipDiscount, finalAmount);
   }
 
