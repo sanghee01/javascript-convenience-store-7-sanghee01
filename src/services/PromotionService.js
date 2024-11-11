@@ -1,4 +1,5 @@
 import { Console, DateTimes } from '@woowacourse/mission-utils';
+import InputValidator from '../validator/InputValidator.js';
 
 class PromotionService {
   constructor(promotionsMap) {
@@ -13,30 +14,34 @@ class PromotionService {
   }
 
   async processBuyItem(buyItem, currentDate) {
-    const { productEntries } = buyItem;
-    let quantity = buyItem.quantity;
-    this.checkStockAvailability(quantity, productEntries);
+    this.checkStockAvailability(buyItem);
+    this.setPromotion(buyItem, currentDate);
 
-    const promotableProducts = this.findPromotableProducts(productEntries, currentDate);
-    let promotion = null;
-    if (promotableProducts.length > 0) {
-      promotion = this.promotionsMap.get(promotableProducts[0].promotion);
-    }
-    buyItem.promotion = promotion;
-    buyItem.freeQuantity = 0;
-
-    if (promotion) {
-      await this.applyPromotion(buyItem, promotableProducts, promotion);
+    if (buyItem.promotion) {
+      await this.handlePromotion(buyItem);
       return;
     }
-    await this.deductQuantityFromProducts(quantity, productEntries);
+
+    await this.deductQuantityFromProducts(buyItem.quantity, buyItem.productEntries);
   }
 
-  checkStockAvailability(quantity, productEntries) {
-    const totalAvailableQuantity = productEntries.reduce((sum, product) => sum + product.quantity, 0);
-    if (quantity > totalAvailableQuantity) {
+  checkStockAvailability(buyItem) {
+    const totalAvailableQuantity = buyItem.productEntries.reduce((sum, product) => sum + product.quantity, 0);
+    if (buyItem.quantity > totalAvailableQuantity) {
       throw Error('[ERROR] 재고 수량을 초과하여 구매할 수 없습니다. 다시 입력해 주세요.');
     }
+  }
+
+  setPromotion(buyItem, currentDate) {
+    const promotableProducts = this.findPromotableProducts(buyItem.productEntries, currentDate);
+    if (promotableProducts.length > 0) {
+      buyItem.promotionProduct = promotableProducts[0];
+      buyItem.promotion = this.promotionsMap.get(buyItem.promotionProduct.promotion);
+    } else {
+      buyItem.promotionProduct = null;
+      buyItem.promotion = null;
+    }
+    buyItem.freeQuantity = 0;
   }
 
   findPromotableProducts(productEntries, currentDate) {
@@ -47,83 +52,75 @@ class PromotionService {
     });
   }
 
-  async applyPromotion(buyItem, promotableProducts, promotion) {
-    const { quantity } = buyItem;
-    const requiredBuyQuantity = promotion.buy;
-    if (quantity < requiredBuyQuantity) {
-      await this.deductQuantityFromProducts(quantity, buyItem.productEntries);
+  async handlePromotion(buyItem) {
+    const requiredQuantity = buyItem.promotion.buy + buyItem.promotion.get;
+
+    // 최소 프로모션 적용 수량보다 적게 구매 시 추가 안내 없이 바로 차감
+    if (buyItem.quantity < buyItem.promotion.buy) {
+      await this.deductQuantityFromProducts(buyItem.quantity, buyItem.productEntries);
       return;
     }
-    await this.processPromotion(buyItem, promotableProducts[0], promotion);
-  }
 
-  async processPromotion(buyItem, promotableProduct, promotion) {
-    const { quantity } = buyItem;
-    const desiredPromotionSets = Math.floor(quantity / promotion.buy);
-    const totalPromotionUnitsNeeded = desiredPromotionSets * promotion.buy;
-
-    if (promotableProduct.quantity >= totalPromotionUnitsNeeded) {
-      await this.applyFullPromotion(buyItem, promotableProduct, promotion, totalPromotionUnitsNeeded);
-    } else {
-      await this.handleInsufficientPromotionStock(buyItem, promotableProduct, promotion);
+    // 프로모션 조건 충족 시 프로모션 적용
+    if (buyItem.quantity >= requiredQuantity) {
+      await this.applyPromotion(buyItem);
+      return;
     }
+
+    await this.offerAdditionalPurchase(buyItem, requiredQuantity);
   }
 
-  async applyFullPromotion(buyItem, promotableProduct, promotion, unitsNeeded) {
-    buyItem.freeQuantity = promotion.get * Math.floor(unitsNeeded / promotion.buy);
-    promotableProduct.quantity -= unitsNeeded;
-    const remainingUnits = buyItem.quantity - unitsNeeded;
-    await this.deductQuantityFromProducts(
-      remainingUnits,
-      buyItem.productEntries.filter((p) => !p.promotion),
-    );
-  }
+  async offerAdditionalPurchase(buyItem, requiredQuantity) {
+    const additionalQuantity = requiredQuantity - buyItem.quantity;
+    const message = `\n현재 ${buyItem.name}은(는) ${buyItem.promotion.get}개를 무료로 더 받을 수 있습니다. 추가하시겠습니까? (Y/N)\n`;
+    const answer = await Console.readLineAsync(message);
+    const validAnswer = InputValidator.validateYesNoAnswer(answer);
 
-  async handleInsufficientPromotionStock(buyItem, promotableProduct, promotion) {
-    const maxPromotionSets = Math.floor(promotableProduct.quantity / promotion.buy);
-    if (maxPromotionSets > 0) {
-      await this.partialPromotion(buyItem, promotableProduct, promotion, maxPromotionSets);
-    } else {
-      await this.noPromotionAvailable(buyItem, promotableProduct);
+    if (validAnswer) {
+      buyItem.quantity = requiredQuantity;
+      await this.applyPromotion(buyItem);
+      return;
     }
+
+    // 추가 구매 거부 시 기존 수량만 차감
+    await this.deductQuantityFromProducts(buyItem.quantity, buyItem.productEntries);
   }
 
-  async partialPromotion(buyItem, promotableProduct, promotion, maxSets) {
-    const promotionUnits = maxSets * promotion.buy;
-    const freeUnits = maxSets * promotion.get;
-    const remainingUnits = buyItem.quantity - promotionUnits;
+  async applyPromotion(buyItem) {
+    const { promotionProduct, promotion } = buyItem;
+    const promotionSetSize = promotion.buy + promotion.get;
 
-    const answer = await Console.readLineAsync(
-      `\n현재 ${buyItem.name}의 프로모션 재고가 부족하여 일부 수량에 프로모션 혜택을 적용할 수 없습니다. 프로모션 없이 ${remainingUnits}개를 정가로 구매하시겠습니까? (Y/N)\n`,
-    );
+    const maxPromotionSets = Math.floor(promotionProduct.quantity / promotionSetSize);
+    const desiredSets = Math.floor(buyItem.quantity / promotionSetSize);
+    const applicableSets = Math.min(maxPromotionSets, desiredSets);
 
-    if (answer.toUpperCase() === 'Y') {
-      buyItem.freeQuantity = freeUnits;
-      promotableProduct.quantity -= promotionUnits;
-      await this.deductQuantityFromProducts(
-        remainingUnits,
-        buyItem.productEntries.filter((p) => !p.promotion),
-      );
-    } else {
-      buyItem.quantity = promotionUnits;
-      buyItem.freeQuantity = freeUnits;
-      promotableProduct.quantity -= promotionUnits;
+    const promotableQuantity = applicableSets * promotion.buy;
+    const freeQuantity = applicableSets * promotion.get;
+    buyItem.freeQuantity = freeQuantity;
+
+    // 프로모션 재고에서 차감
+    promotionProduct.quantity -= promotableQuantity + freeQuantity;
+
+    const remainingQuantity = buyItem.quantity - promotableQuantity;
+    if (remainingQuantity > 0) {
+      await this.handleNonPromotionalQuantity(buyItem, remainingQuantity);
+      return;
     }
+
+    await this.deductQuantityFromProducts(promotableQuantity, [promotionProduct]);
   }
 
-  async noPromotionAvailable(buyItem, promotableProduct) {
-    const answer = await Console.readLineAsync(
-      `\n현재 ${buyItem.name}의 프로모션 재고가 부족하여 프로모션 혜택을 적용할 수 없습니다. 프로모션 없이 구매하시겠습니까? (Y/N)\n`,
-    );
+  async handleNonPromotionalQuantity(buyItem, remainingQuantity) {
+    const message = `\n현재 ${buyItem.name} ${remainingQuantity}개는 프로모션 할인이 적용되지 않습니다. 그래도 구매하시겠습니까? (Y/N)\n`;
+    const answer = await Console.readLineAsync(message);
+    const validAnswer = InputValidator.validateYesNoAnswer(answer);
 
-    if (answer.toUpperCase() === 'Y') {
-      await this.deductQuantityFromProducts(
-        buyItem.quantity,
-        buyItem.productEntries.filter((p) => !p.promotion),
-      );
-    } else {
-      throw Error('[ERROR] 구매를 취소하셨습니다. 다시 입력해 주세요.');
+    if (validAnswer) {
+      await this.deductQuantityFromProducts(remainingQuantity, buyItem.productEntries);
+      return;
     }
+
+    buyItem.quantity -= remainingQuantity;
   }
 
   async deductQuantityFromProducts(quantity, products) {
@@ -133,10 +130,9 @@ class PromotionService {
         product.quantity -= remainingQuantity;
         remainingQuantity = 0;
         break;
-      } else {
-        remainingQuantity -= product.quantity;
-        product.quantity = 0;
       }
+      remainingQuantity -= product.quantity;
+      product.quantity = 0;
     }
     if (remainingQuantity > 0) {
       throw Error('[ERROR] 재고 수량을 초과하여 구매할 수 없습니다. 다시 입력해 주세요.');

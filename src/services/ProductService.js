@@ -6,24 +6,6 @@ class ProductService {
     this.productsMap = productsMap;
   }
 
-  printWelcomeMessage() {
-    Console.print('\n안녕하세요. W편의점입니다.');
-    Console.print('현재 보유하고 있는 상품입니다.\n');
-    for (const product of this.productsMap.values()) {
-      let promotionInfo = '';
-      if (product.promotion) {
-        promotionInfo = ` ${product.promotion}`;
-      }
-
-      let quantityInfo = '재고 없음';
-      if (product.quantity > 0) {
-        quantityInfo = `${product.quantity}개`;
-      }
-
-      Console.print(`- ${product.name} ${product.price.toLocaleString('ko-KR')}원 ${quantityInfo}${promotionInfo}`);
-    }
-  }
-
   parseBuyInput(buyInput) {
     const buyList = [];
     for (let buyProduct of buyInput) {

@@ -20,7 +20,7 @@ class App {
 
   async run() {
     while (await this.processPurchase()) {
-      // 계속 구매를 진행
+      // 구매를 계속 진행
     }
     this.outputHandler.printThankYouMessage();
   }
@@ -62,10 +62,8 @@ class App {
     buyList.forEach((buyItem) => {
       const amount = buyItem.productEntries[0].price * buyItem.quantity;
       totalAmount += amount;
-      let freeQuantity = 0;
       if (buyItem.freeQuantity) {
-        freeQuantity = buyItem.freeQuantity;
-        promotionDiscount += buyItem.productEntries[0].price * freeQuantity;
+        promotionDiscount += buyItem.productEntries[0].price * buyItem.freeQuantity;
       }
     });
 

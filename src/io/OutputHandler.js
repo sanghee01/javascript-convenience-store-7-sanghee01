@@ -6,9 +6,14 @@ class OutputHandler {
     Console.print('현재 보유하고 있는 상품입니다.\n');
     for (const product of productsMap.values()) {
       let promotionInfo = '';
-      if (product.promotion) promotionInfo = ` ${product.promotion}`;
+      if (product.promotion) {
+        promotionInfo = ` ${product.promotion}`;
+      }
+
       let quantityInfo = '재고 없음';
-      if (product.quantity > 0) quantityInfo = `${product.quantity}개`;
+      if (product.quantity > 0) {
+        quantityInfo = `${product.quantity}개`;
+      }
 
       Console.print(`- ${product.name} ${product.price.toLocaleString('ko-KR')}원 ${quantityInfo}${promotionInfo}`);
     }
@@ -41,7 +46,7 @@ class OutputHandler {
   }
 
   printTotals(buyList, totalAmount, promotionDiscount, membershipDiscount, finalAmount) {
-    const totalQuantity = buyList.reduce((sum, item) => sum + item.quantity + (item.freeQuantity || 0), 0);
+    const totalQuantity = buyList.reduce((sum, item) => sum + item.quantity, 0);
     Console.print('====================================');
     Console.print(`총구매액 ${totalQuantity} ${totalAmount.toLocaleString('ko-KR')}`);
     Console.print(`행사할인 -${promotionDiscount.toLocaleString('ko-KR')}`);
