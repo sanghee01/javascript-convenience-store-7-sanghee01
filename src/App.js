@@ -112,9 +112,11 @@ class App {
     const currentDate = new Date(DateTimes.now());
 
     for (const buyItem of buyList) {
-      const { productEntries, quantity } = buyItem;
+      const { productEntries } = buyItem;
+      let quantity = buyItem.quantity;
       let totalAvailableQuantity = productEntries.reduce((sum, product) => sum + product.quantity, 0);
 
+      // 구매 수량이 총 재고를 초과하는지 확인
       if (quantity > totalAvailableQuantity) {
         throw Error('[ERROR] 재고 수량을 초과하여 구매할 수 없습니다. 다시 입력해 주세요.');
       }
@@ -137,23 +139,18 @@ class App {
       if (promotion) {
         const requiredBuyQuantity = promotion.buy;
 
-        // 프로모션 혜택을 받을 수 있는 최소 수량보다 적게 구매한 경우
+        // 구매 수량이 프로모션 혜택을 받을 수 있는 최소 수량보다 적은 경우
         if (quantity < requiredBuyQuantity) {
-          const additionalQuantityNeeded = requiredBuyQuantity - quantity;
-          const answer = await Console.readLineAsync(
-            `현재 ${buyItem.name}은(는) ${additionalQuantityNeeded}개를 추가로 구매하면 프로모션 혜택을 받을 수 있습니다. 추가하시겠습니까? (Y/N)`,
-          );
-
-          if (answer.toUpperCase() === 'Y') {
-            buyItem.quantity += additionalQuantityNeeded;
-          }
+          // 추가 구매 여부를 묻지 않고 일반 재고에서 구매 처리
+          await this.deductQuantityFromProducts(quantity, productEntries);
+          continue;
         }
 
         // 적용 가능한 프로모션 세트 수 계산
-        const desiredPromotionSets = Math.floor(buyItem.quantity / promotion.buy);
+        const desiredPromotionSets = Math.floor(quantity / requiredBuyQuantity);
 
         // 총 프로모션에 필요한 수량
-        const totalPromotionUnitsNeeded = desiredPromotionSets * promotion.buy;
+        const totalPromotionUnitsNeeded = desiredPromotionSets * requiredBuyQuantity;
 
         // 프로모션 재고가 충분한지 확인
         const promotableProduct = promotableProducts[0];
@@ -163,26 +160,25 @@ class App {
           promotableProduct.quantity -= totalPromotionUnitsNeeded;
 
           // 남은 구매 수량은 일반 재고에서 차감
-          const remainingPurchaseUnits = buyItem.quantity - totalPromotionUnitsNeeded;
+          const remainingPurchaseUnits = quantity - totalPromotionUnitsNeeded;
           await this.deductQuantityFromProducts(
             remainingPurchaseUnits,
             productEntries.filter((p) => !p.promotion),
           );
         } else {
-          // 프로모션 재고가 부족한 경우
-          const maxPromotionSets = Math.floor(promotableProduct.quantity / promotion.buy);
+          // 프로모션 재고가 부족한 경우 처리
+          const maxPromotionSets = Math.floor(promotableProduct.quantity / requiredBuyQuantity);
 
           if (maxPromotionSets > 0) {
-            const promotionUnits = maxPromotionSets * promotion.buy;
+            const promotionUnits = maxPromotionSets * requiredBuyQuantity;
             const freeUnits = maxPromotionSets * promotion.get;
-            const remainingUnits = buyItem.quantity - promotionUnits;
+            const remainingUnits = quantity - promotionUnits;
 
             const answer = await Console.readLineAsync(
               `현재 ${buyItem.name}의 프로모션 재고가 부족하여 일부 수량에 프로모션 혜택을 적용할 수 없습니다. 프로모션 없이 ${remainingUnits}개를 정가로 구매하시겠습니까? (Y/N)`,
             );
 
             if (answer.toUpperCase() === 'Y') {
-              // 프로모션 적용 가능한 부분 적용
               buyItem.freeQuantity = freeUnits;
               promotableProduct.quantity -= promotionUnits;
 
@@ -197,25 +193,24 @@ class App {
               promotableProduct.quantity -= promotionUnits;
             }
           } else {
-            // 프로모션 혜택을 적용할 수 없는 경우
+            // 프로모션 재고가 부족하여 혜택을 받을 수 없는 경우
             const answer = await Console.readLineAsync(
               `현재 ${buyItem.name}의 프로모션 재고가 부족하여 프로모션 혜택을 적용할 수 없습니다. 프로모션 없이 구매하시겠습니까? (Y/N)`,
             );
 
             if (answer.toUpperCase() === 'Y') {
               await this.deductQuantityFromProducts(
-                buyItem.quantity,
+                quantity,
                 productEntries.filter((p) => !p.promotion),
               );
             } else {
-              // 구매 취소
               throw Error('[ERROR] 구매를 취소하셨습니다. 다시 입력해 주세요.');
             }
           }
         }
       } else {
         // 프로모션이 없는 경우
-        await this.deductQuantityFromProducts(buyItem.quantity, productEntries);
+        await this.deductQuantityFromProducts(quantity, productEntries);
       }
     }
   }
